@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="chat-container">
+    <aside class="sidebar">
+      <h2>Online Users</h2>
+      <ul id="user-list"></ul>
+    </aside>
+    <main class="chat-main">
+      <header class="chat-header">
+        <h1>Chat App</h1>
+        <div id="chat-with">Chatting with: <span id="chat-username">Select a user</span></div>
+        <button id="dark-mode-toggle">🌙</button>
+        <div id="current-user"></div>
+        <a href="/logout" style="margin-left:10px; color:#fff; text-decoration:underline;">Logout</a>
+      </header>
+
+      <ul id="messages" class="messages"></ul>
+      <form id="chat-form" autocomplete="off" class="chat-form">
+        <input id="message-input" placeholder="Type a message..." autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+      <form id="private-form" autocomplete="off" class="private-form">
+        <input id="private-message" placeholder="Type a private message..." />
+        <button type="submit">Send Private</button>
+      </form>
+    </
