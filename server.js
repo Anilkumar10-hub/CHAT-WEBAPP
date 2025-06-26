@@ -1,60 +1,174 @@
 const express = require('express');
-const http= require('http');
+const http = require('http');
 const { Server } = require('socket.io');
-
 const session = require('express-session');
-const passport = require('passport');
-const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const bcrypt = require('bcryptjs');
+const { MongoClient } = require('mongodb');
 
 const app = express();
-
 const server = http.createServer(app);
-const io = new Server(server,{
-    cors: {
-        origin: '*',
-        methods: ['GET', 'POST'],
-        allowedHeaders: ['Content-Type'],
-        credentials: true
-    }
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type'],
+    credentials: true
+  }
 });
-const port = 3000;
-const users = {};
+
+const url = 'mongodb://localhost:27017';
+const dbName = 'chatapp';
+const client = new MongoClient(url);
+
+let db, usersCollection;
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(session({
+  secret: 'your_secret_key',
+  resave: false,
+  saveUninitialized: false
+}));
 app.use(express.static(__dirname));
 
-function broadcastUserList(){
-    io.emit('user list',Object.keys(users));
+// ====== MongoDB Connection ======
+async function main() {
+  await client.connect();
+  console.log('Connected to MongoDB!');
+  db = client.db(dbName);
+  usersCollection = db.collection('users');
+  server.listen(3000, () => {
+    console.log('Server is running on http://localhost:3000');
+  });
 }
-io.on('connection', (socket) => {
-    socket.on('register',(username)=>{
-        users[username]=socket.id;
-        console.log(`${username} registered with id ${socket.id}`);
-        broadcastUserList();
-    });
-    
-    socket.on('disconnect',()=>{
-        for(const [name,id] of Object.entries(users)){
-            if(id==socket.id){
-                delete users[name];
-                break;
-            }
-        }
-        broadcastUserList();
-    });
-    socket.on('private message',(msgObj)=>{
-        const targetSocketId = users[msgObj.to];
-        if(targetSocketId){
-            io.to(targetSocketId).emit('private message',msgObj);
-            socket.emit('private message',msgObj);
-        }
-    });
-    console.log(`A user connected`);
-    socket.on('disconnect', () => {
-        console.log(`A user disconnected`);
-    });
-    socket.on('Chat message', (msg) => {
-        io.emit('Chat message', msg);
-    });
+main();
+
+// ====== AUTH ENDPOINTS ======
+app.post('/register', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password)
+    return res.status(400).json({ error: 'Username and password required.' });
+
+  const existingUser = await usersCollection.findOne({ username });
+  if (existingUser)
+    return res.status(400).json({ error: 'Username already taken.' });
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+  await usersCollection.insertOne({ username, password: hashedPassword });
+  res.json({ message: 'Registration successful!' });
 });
-server.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}`);
+
+app.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+  const user = await usersCollection.findOne({ username });
+  if (!user) return res.status(400).json({ error: 'Invalid username or password.' });
+
+  const valid = await bcrypt.compare(password, user.password);
+  if (!valid) return res.status(400).json({ error: 'Invalid username or password.' });
+
+  req.session.user = { username: user.username };
+  res.json({ message: 'Login successful!' });
+});
+
+app.get('/profile', (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Not logged in.' });
+  res.json({ user: req.session.user });
+});
+
+app.post('/logout', (req, res) => {
+  req.session.destroy();
+  res.json({ message: 'Logged out.' });
+});
+
+// ====== SOCKET.IO CHAT LOGIC ======
+const users = {};
+
+function broadcastUserList() {
+  console.log('Broadcasting user list:', Object.keys(users));
+  io.emit('user list', Object.keys(users));
+}
+
+io.on('connection', (socket) => {
+  console.log(`Socket connected: ${socket.id}`);
+
+  socket.on('register', (username) => {
+    socket.username = username;
+    users[username] = socket.id;
+    console.log(`User registered: ${username} (${socket.id})`);
+    broadcastUserList();
+  });
+
+  socket.on('disconnect', () => {
+    if (socket.username) {
+      console.log(`User disconnected: ${socket.username} (${socket.id})`);
+      delete users[socket.username];
+      broadcastUserList();
+    } else {
+      console.log(`Socket disconnected: ${socket.id}`);
+    }
+  });
+
+  socket.on('Chat message', (msgObj) => {
+    io.emit('Chat message', msgObj);
+  });
+
+  socket.on('private message', (msgObj) => {
+    const targetSocketId = users[msgObj.to];
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('private message', msgObj);
+      socket.emit('private message', msgObj);
+    }
+  });
+
+  // Call request handling
+  socket.on('call_request', (data) => {
+    const targetSocketId = users[data.to];
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('incoming_call', { from: data.from });
+      // Also send the offer
+      io.to(targetSocketId).emit('signal', {
+        from: data.from,
+        type: 'offer',
+        offer: data.offer
+      });
+    }
+  });
+
+  socket.on('call_accepted', (data) => {
+    const targetSocketId = users[data.to];
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('call_accepted', { 
+        from: data.from,
+        offer: data.offer
+      });
+    }
+  });
+
+  socket.on('call_rejected', (data) => {
+    const targetSocketId = users[data.to];
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('call_rejected', { from: data.from });
+    }
+  });
+
+  socket.on('call_ended', (data) => {
+    const targetSocketId = users[data.to];
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('call_ended', { from: data.from });
+    }
+  });
+
+  // WebRTC signaling
+  socket.on('signal', (data) => {
+    const targetSocketId = users[data.to];
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('signal', {
+        from: data.from,
+        type: data.type,
+        candidate: data.candidate,
+        offer: data.offer,
+        answer: data.answer
+      });
+    }
+  });
 });
