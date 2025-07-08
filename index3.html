@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Registration & Login Forms -->
+  <div id="auth-container">
+    <h2>Register</h2>
+    <form id="register-form">
+      <input name="reg-username" placeholder="Username" required>
+      <input name="reg-password" type="password" placeholder="Password" required>
+      <button type="submit">Register</button>
+    </form>
+    <div id="register-result"></div>
+
+    <h2>Login</h2>
+    <form id="login-form">
+      <input name="login-username" placeholder="Username" required>
+      <input name="login-password" type="password" placeholder="Password" required>
+      <button type="submit">Login</button>
+    </form>
+    <h2>Or login with Google</h2>
+    <a href="/auth/google" id="google-login-btn">
+      <img src="https://developers.google.com/identity/images/btn_google_signin_dark_normal_web.png" alt="Sign in with Google" />
+    </a>
+    <div id="login-result"></div>
+  </div>
+
+  <!-- Chat UI -->
+  <div class="chat-container" style="display:none;">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>Online Users</h2>
+      </div>
+      <ul id="user-list"></ul>
+    </aside>
+    <main class="chat-main">
+      <header class="chat-header">
+        <div>
+          <h1>Chat App</h1>
+          <div id="chat-with">Chatting with: <span id="chat-username">Select a user</span></div>
+        </div>
+        <div class="header-actions">
+          <div id="current-user"></div>
+        </div>
+      </header>
+      <ul id="messages" class="messages"></ul>
+      <form id="message-form" autocomplete="off" class="chat-form">
+        <input id="message-input" placeholder="Type a message..." autocomplete="off" />
+        <button type="submit">Send</button>
+        <video id="localVideo" autoplay muted></video>
+        <video id="remoteVideo" autoplay></video>
+        <button id="startCallBtn" type="button">Start Call</button>
+        <button id="hangupBtn" type="button">Hang Up</button>
+      </form>
+    </main>
+  </div>
+  
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
